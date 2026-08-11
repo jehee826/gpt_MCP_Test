@@ -1,0 +1,16 @@
+{
+  "name": "student-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/server": "latest",
+    "@modelcontextprotocol/node": "latest",
+    "zod": "latest"
+  }
+}
