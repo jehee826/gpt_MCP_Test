@@ -28,6 +28,24 @@ function sendToDiscordQueued(payload) {
   return task;
 }
 
+// Content-Type과 본문 앞부분을 보고 Cloudflare/프록시 차단 페이지인지 판별
+function isHtmlBlockPage(response, bodyText) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("text/html")) return true;
+  const trimmed = bodyText.trim();
+  return trimmed.startsWith("<!DOCTYPE") || trimmed.startsWith("<html");
+}
+
+async function postOnce(payload) {
+  const response = await fetch(DISCORD_WEBHOOK_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const bodyText = await response.text();
+  return { response, bodyText };
+}
+
 async function sendToDiscord(payload) {
   const now = Date.now();
   const wait = MIN_INTERVAL_MS - (now - lastRequestTime);
@@ -36,22 +54,33 @@ async function sendToDiscord(payload) {
   }
   lastRequestTime = Date.now();
 
-  const response = await fetch(DISCORD_WEBHOOK_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-
-  const responseText = await response.text();
+  const { response, bodyText } = await postOnce(payload);
 
   console.log("[DISCORD] HTTP Status:", response.status);
-  console.log("[DISCORD] Response Body:", responseText);
+
+  // Cloudflare(또는 다른 프록시)가 요청을 가로채 HTML 에러/챌린지 페이지를
+  // 돌려주는 경우 — Discord API가 실제로 응답한 게 아니므로 JSON 파싱을
+  // 시도하지 않고, 로그도 앞부분만 남깁니다.
+  if (isHtmlBlockPage(response, bodyText)) {
+    console.error(
+      "[DISCORD] ⚠️ HTML 차단/에러 페이지 수신 (Discord가 아닌 프록시/Cloudflare 응답) — status:",
+      response.status,
+      "body 앞부분:",
+      bodyText.slice(0, 200).replace(/\s+/g, " ")
+    );
+    throw new Error(
+      `디스코드 웹훅에 도달하지 못했습니다 (HTTP ${response.status}, HTML 응답 — Cloudflare 차단 가능성). ` +
+        `Render 아웃바운드 IP가 일시적으로 제한됐을 수 있어요. 잠시 후 다시 시도해주세요.`
+    );
+  }
+
+  console.log("[DISCORD] Response Body:", bodyText);
 
   if (response.status === 429) {
     let retryAfter = null;
     let isGlobal = null;
     try {
-      const rateLimitData = JSON.parse(responseText);
+      const rateLimitData = JSON.parse(bodyText);
       retryAfter = rateLimitData.retry_after;
       isGlobal = rateLimitData.global;
       console.error("[DISCORD] ⚠️ RATE LIMIT — retry_after:", retryAfter, "global:", isGlobal);
@@ -63,13 +92,14 @@ async function sendToDiscord(payload) {
     if (retryAfter) {
       await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000 + 200));
       lastRequestTime = Date.now();
-      const retryResponse = await fetch(DISCORD_WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      const retryText = await retryResponse.text();
+      const { response: retryResponse, bodyText: retryText } = await postOnce(payload);
       console.log("[DISCORD] 재시도 Status:", retryResponse.status);
+
+      if (isHtmlBlockPage(retryResponse, retryText)) {
+        throw new Error(
+          `재시도에서도 HTML 차단 페이지를 받았습니다 (HTTP ${retryResponse.status}). Cloudflare가 IP를 계속 막고 있을 가능성이 높습니다.`
+        );
+      }
       if (!retryResponse.ok) {
         throw new Error(`디스코드 전송 실패(재시도 후): HTTP ${retryResponse.status} / ${retryText}`);
       }
@@ -78,10 +108,10 @@ async function sendToDiscord(payload) {
   }
 
   if (!response.ok) {
-    throw new Error(`디스코드 전송 실패: HTTP ${response.status} ${response.statusText} / ${responseText}`);
+    throw new Error(`디스코드 전송 실패: HTTP ${response.status} ${response.statusText} / ${bodyText}`);
   }
 
-  return responseText;
+  return bodyText;
 }
 
 // ── MCP 서버 정의 ─────────────────────────────────────────────
