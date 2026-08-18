@@ -5,38 +5,55 @@ import * as z from "zod/v4";
 
 function createMcpServer() {
   const server = new McpServer({
-    name: "student-mcp",
+    name: "discord-webhook-mcp",
     version: "1.0.0"
   });
 
   server.registerTool(
-    "get_student_info",
+    "send_discord_message",
     {
-      description: "학생의 정보를 조회할 때 사용하는 Tool입니다.",
+      description: "사용자의 입력을 그대로 Discord로 전송하는 툴입니다",
       inputSchema: z.object({
-        name: z.string().describe("조회할 학생의 이름")
+        message: z.string().describe("보낼 메세지")
       })
     },
 
-    async ({ name }) => {
-      // MCP 내부에 직접 저장된 예제 데이터
-      const student = {
-        name: name,
-        major: "컴퓨터소프트웨어과",
-        grade: 2,
-        interests: ["AI", "웹 개발", "MCP"]
+    async ({ message }) => {
+
+      const webhookUrl = "https://discord.com/api/webhooks/1539143911895990344/WtS1EwSZhyT7t47Zwvn7hrOglu2M56pk2pflzvlF2loI5l_jGDJR8a-xk2HbniMWMl4b";
+
+      const discordPayload = {
+        content: message
       };
+
+      try {
+        const response = await fetch(webhookUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(discordPayload)
+        });
+
+        if (!response.ok) {
+          throw new Error(`디스코드 전송 실패: ${response.statusText}`);
+        }
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `디스코드 웹훅 전송 중 오류가 발생했습니다: ${error.message}`
+            }
+          ]
+        };
+      }
 
       return {
         content: [
           {
             type: "text",
-            text: `
-학생 정보:
-${JSON.stringify(student)}
-
-위 정보를 바탕으로 학생을 자연스럽게 소개해주세요.
-`
+            text: `성공적으로 디스코드 채널에 메시지를 전송했습니다!\n전송된 메세지: ${message}`
           }
         ]
       };
