@@ -22,7 +22,7 @@ function createMcpServer() {
 
       // Discord Webhook URL
       const webhookUrl =
-        "https://discord.com/api/webhooks/1539143911895990344/WtS1EwSZhyT7t47Zwvn7hrOglu2M56pk2pflzvlF2loI5l_jGDJR8a-xk2HbniMWMl4b";
+        "https://discord.com/api/webhooks/1539151554425262211/dFkR738jAESNhr5V4uCuTdmKZnSRdNx7wF_n6YH6YEdC7EtmNIYiCcjTCNuy3CDb2SFt";
 
       const discordPayload = {
         content: message
